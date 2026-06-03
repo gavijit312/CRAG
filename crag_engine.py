@@ -1,8 +1,7 @@
 import os
 import pickle
 import numpy as np
-
-from transformers import pipeline
+import google.generativeai as genai
 
 from langchain_community.document_loaders import (
     PyPDFLoader
@@ -64,6 +63,28 @@ reranker = CrossEncoder(
 )
 
 print("Cross Encoder Loaded")
+
+
+# ============================================================
+# GEMINI API CONFIGURATION
+# ============================================================
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY environment variable not set. Please set your Google API key.")
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+llm = genai.GenerativeModel(
+    model_name="gemini-2.0-flash",
+    generation_config=genai.types.GenerationConfig(
+        temperature=0.2,
+        max_output_tokens=256,
+    ),
+)
+
+print("Gemini Flash 2.5 API Configured")
 
 
 # ============================================================
@@ -295,20 +316,7 @@ def rerank_documents(query, docs, top_k=4, min_relevance_score=0.3, verbose=True
     return final_docs
 
 
-# ============================================================
-# LOAD LLM
-# ============================================================
 
-print("\nLoading LLM...")
-
-llm = pipeline(
-    "text-generation",
-    model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    max_new_tokens=128,
-    temperature=0.2
-)
-
-print("LLM Loaded")
 
 
 # ============================================================
@@ -332,8 +340,7 @@ def generate_answer(query, scored_docs, min_relevance_score=0.3):
         for score, doc in scored_docs[:3]
     ])
 
-    prompt = f"""
-Answer the question briefly using the context.
+    prompt = f"""Answer the question briefly using the context.
 
 Rules:
 - Maximum 7 lines
@@ -347,18 +354,14 @@ Context:
 Question:
 {query}
 
-Answer:
-"""
+Answer:"""
 
-    response = llm(prompt)
-
-    answer = response[0]["generated_text"]
-
-    if "Answer:" in answer:
-
-        answer = answer.split("Answer:")[-1]
-
-    return answer.strip()
+    try:
+        response = llm.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"\nAPI Error: {e}")
+        return "Error generating response. Please try again."
 
 
 # ============================================================
